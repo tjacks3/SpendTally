@@ -20,7 +20,7 @@ struct BudgetListView: View {
                 budgetList
             }
         }
-        .navigationTitle("SpendPal 💰")
+        .navigationTitle("SpendTally")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("New Budget", systemImage: "plus") {
