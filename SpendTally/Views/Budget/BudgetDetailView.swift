@@ -1,10 +1,38 @@
+// ============================================================
+// FILE:   BudgetDetailView.swift
+// LOCATION: SpendTally/Views/Budget/BudgetDetailView.swift
+//
+// ACTION: REPLACE EXISTING FILE
+//   1. Open SpendTally/Views/Budget/BudgetDetailView.swift
+//   2. Select all (Cmd+A) and delete
+//   3. Paste this entire file in
+//
+// WHAT CHANGED vs. the previous version:
+//   • Added @State var selectedExpense: Expense?
+//     This acts as the "edit target" — setting it to any expense
+//     opens EditExpenseView in a sheet.
+//   • Each ExpenseRowView is now wrapped in a Button (plain style)
+//     so the row becomes tappable. A trailing chevron hint
+//     reinforces the tap affordance without cluttering the layout.
+//   • A .sheet(item: $selectedExpense) at the view root presents
+//     EditExpenseView for whichever expense was tapped.
+//   • No other logic was changed — date grouping, hero section,
+//     swipe-to-delete, and progress bar are all identical.
+// ============================================================
+
 import SwiftUI
 import SwiftData
 
 struct BudgetDetailView: View {
 
     @Bindable var budget: Budget
-    @State private var showingAddExpense = false
+
+    // ── Sheet triggers ───────────────────────────────────────────────────────
+    @State private var showingAddExpense  = false
+    /// Set to a non-nil Expense to open EditExpenseView for that expense.
+    @State private var selectedExpense: Expense?
+
+    // MARK: - Body
 
     var body: some View {
         ScrollView {
@@ -30,8 +58,16 @@ struct BudgetDetailView: View {
                 }
             }
         }
+        // ── Add expense sheet ────────────────────────────────────────────────
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(budget: budget)
+        }
+        // ── Edit expense sheet ───────────────────────────────────────────────
+        // .sheet(item:) automatically presents when selectedExpense becomes
+        // non-nil and dismisses (and nils it out) when the sheet is closed.
+        // Expense is Identifiable via SwiftData's @Model, so this just works.
+        .sheet(item: $selectedExpense) { expense in
+            EditExpenseView(expense: expense)
         }
     }
 
@@ -43,7 +79,7 @@ struct BudgetDetailView: View {
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.secondary)
 
-            // Large split number display: $292.50 → "$", "292", ".50"
+            // Large split number: $292.50 rendered as "$" + "292" + ".50"
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text("$")
                     .font(.system(size: 38, weight: .light, design: .rounded))
@@ -59,14 +95,12 @@ struct BudgetDetailView: View {
                     .baselineOffset(4)
             }
 
-            // Spent / Budget pills
             HStack(spacing: 24) {
                 miniStat(label: "Budget", value: budget.totalAmount, color: .secondary)
-                miniStat(label: "Spent", value: budget.totalSpent, color: .orange)
+                miniStat(label: "Spent",  value: budget.totalSpent,  color: .orange)
             }
             .padding(.top, 4)
 
-            // Progress bar
             ProgressView(value: budget.progress)
                 .tint(budget.isOverBudget ? .red : .accentColor)
                 .padding(.horizontal, 40)
@@ -86,9 +120,9 @@ struct BudgetDetailView: View {
     }
 
     private var balanceParts: (integer: String, decimal: String) {
-        let value = abs(budget.remaining)
+        let value     = abs(budget.remaining)
         let formatted = String(format: "%.2f", value)
-        let parts = formatted.split(separator: ".")
+        let parts     = formatted.split(separator: ".")
         return (String(parts[0]), parts.count > 1 ? String(parts[1]) : "00")
     }
 
@@ -112,9 +146,33 @@ struct BudgetDetailView: View {
             } else {
                 ForEach(groupedExpenses, id: \.label) { group in
                     Section {
-                        ForEach(Array(group.expenses.enumerated()), id: \.element.id) { index, expense in
-                            ExpenseRowView(expense: expense)
+                        ForEach(Array(group.expenses.enumerated()),
+                                id: \.element.id) { index, expense in
+
+                            // ── Tappable expense row ─────────────────────────
+                            // The entire row is a Button so the user can tap
+                            // anywhere on it to open the expense editor.
+                            // .plain style preserves the custom ExpenseRowView
+                            // appearance — no default button highlighting.
+                            Button {
+                                selectedExpense = expense
+                            } label: {
+                                HStack(spacing: 0) {
+                                    ExpenseRowView(expense: expense)
+
+                                    // Chevron — a standard iOS affordance that
+                                    // signals "tap me to see more / edit".
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color(.tertiaryLabel))
+                                        .padding(.trailing, 20)
+                                }
                                 .background(Color(.systemBackground))
+                                // contentShape makes the entire row (including
+                                // whitespace) respond to taps, not just the text.
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
 
                             // Divider indented to align under text, not icon
                             if index < group.expenses.count - 1 {
@@ -135,6 +193,8 @@ struct BudgetDetailView: View {
         .padding(.top, 10)
     }
 
+    // MARK: - Empty State
+
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "tray")
@@ -152,6 +212,8 @@ struct BudgetDetailView: View {
         .padding(.vertical, 56)
         .background(Color(.systemBackground))
     }
+
+    // MARK: - Section Header
 
     private func sectionHeader(label: String, total: Double) -> some View {
         HStack {
@@ -171,16 +233,16 @@ struct BudgetDetailView: View {
     // MARK: - Date Grouping
 
     private struct ExpenseGroup {
-        let label: String
+        let label:    String
         let expenses: [Expense]
-        var total: Double { expenses.reduce(0) { $0 + $1.amount } }
+        var total:    Double { expenses.reduce(0) { $0 + $1.amount } }
     }
 
     private var groupedExpenses: [ExpenseGroup] {
-        let sorted = budget.expenses.sorted { $0.date > $1.date }
+        let sorted   = budget.expenses.sorted { $0.date > $1.date }
         let calendar = Calendar.current
         var groupMap: [String: [Expense]] = [:]
-        var order: [String] = []
+        var order:    [String] = []
 
         for expense in sorted {
             let key: String
@@ -219,7 +281,6 @@ struct BudgetDetailView: View {
 
 #Preview {
     do {
-        // Explicit Schema prevents "SwiftDataError error 1" in the Xcode canvas.
         let schema = Schema([Budget.self, Expense.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: config)
@@ -230,11 +291,11 @@ struct BudgetDetailView: View {
 
         let samples: [(Double, String, Int)] = [
             (24.99, "Whole Foods run", 0),
-            (4.75,  "Coffee", 0),
-            (3.35,  "Pet treats", 0),
+            (4.75,  "Coffee",          0),
+            (3.35,  "Pet treats",      0),
             (39.75, "Jeff's birthday gift", -1),
-            (12.50, "Lunch", -1),
-            (89.00, "Weekly shop", -3),
+            (12.50, "Lunch",           -1),
+            (89.00, "Weekly shop",     -3),
         ]
         for (amount, note, daysAgo) in samples {
             let date = Calendar.current.date(byAdding: .day, value: daysAgo, to: .now)!
