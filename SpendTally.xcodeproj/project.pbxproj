@@ -10,9 +10,22 @@
 		F0A3396B2F675D9000097821 /* SpendTally.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpendTally.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F03D877C2F68DECF009F019F /* Exceptions for "SpendTally" folder in "SpendTally" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F0A3396A2F675D9000097821 /* SpendTally */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F0A3396D2F675D9000097821 /* SpendTally */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F03D877C2F68DECF009F019F /* Exceptions for "SpendTally" folder in "SpendTally" target */,
+			);
 			path = SpendTally;
 			sourceTree = "<group>";
 		};
@@ -257,6 +270,8 @@
 				DEVELOPMENT_TEAM = 7DUQM685M2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SpendTally/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SpendTally uses the camera to scan receipts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -290,6 +305,8 @@
 				DEVELOPMENT_TEAM = 7DUQM685M2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SpendTally/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SpendTally uses the camera to scan receipts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
