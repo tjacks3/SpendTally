@@ -10,6 +10,7 @@ struct SpendTallyApp: App {
         // Define the schema — which models exist in our database.
         let schema = Schema([
             Budget.self,
+            BudgetCycle.self,
             Expense.self
         ])
 

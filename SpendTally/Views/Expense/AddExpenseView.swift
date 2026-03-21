@@ -27,7 +27,7 @@ import PhotosUI     // required for PhotosPicker and PhotosPickerItem
 
 struct AddExpenseView: View {
 
-    let budget: Budget
+    let cycle: BudgetCycle
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss)      private var dismiss
@@ -65,7 +65,7 @@ struct AddExpenseView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        vm.addExpense(to: budget, context: modelContext)
+                        vm.addExpense(to: cycle, context: modelContext)
                         dismiss()
                     }
                     .disabled(!vm.isFormValid || vm.isProcessingOCR)

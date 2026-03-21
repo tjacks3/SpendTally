@@ -2,22 +2,27 @@
 // FILE:   BudgetDetailView.swift
 // LOCATION: SpendTally/Views/Budget/BudgetDetailView.swift
 //
-// ACTION: REPLACE EXISTING FILE
-//   1. Open SpendTally/Views/Budget/BudgetDetailView.swift
-//   2. Select all (Cmd+A) and delete
-//   3. Paste this entire file in
+// FIXES IN THIS VERSION:
+//   1. @Bindable var budget: Budget — restored explicitly.
+//      The two "Referencing subscript requires wrapper Bindable<Budget>"
+//      errors occur when this annotation is missing. Any use of
+//      $budget inside the view body (e.g. $budget.name in a TextField,
+//      or passing budget as a Bindable argument) requires it.
 //
-// WHAT CHANGED vs. the previous version:
-//   • Added @State var selectedExpense: Expense?
-//     This acts as the "edit target" — setting it to any expense
-//     opens EditExpenseView in a sheet.
-//   • Each ExpenseRowView is now wrapped in a Button (plain style)
-//     so the row becomes tappable. A trailing chevron hint
-//     reinforces the tap affordance without cluttering the layout.
-//   • A .sheet(item: $selectedExpense) at the view root presents
-//     EditExpenseView for whichever expense was tapped.
-//   • No other logic was changed — date grouping, hero section,
-//     swipe-to-delete, and progress bar are all identical.
+//   2. Replaced .sheet(item: $selectedExpense) with the
+//      isPresented + separate Bool pattern.
+//      The two "Property 'id' requires Binding<Subject>.Element be a
+//      class type" errors come from a SwiftUI/Swift version mismatch
+//      where the compiler can't verify Expense is Identifiable inside
+//      the sheet(item:) overload. Using showingEditExpense: Bool +
+//      selectedExpense: Expense? sidesteps the issue entirely.
+//
+//   3. Removed the "if let cycle = ... { return ... }" pattern inside
+//      the AddExpense sheet closure.
+//      ViewBuilder does not allow explicit 'return' statements.
+//      CycleManager.getOrCreateCurrentCycle is also non-optional, so
+//      'if let' would not compile regardless. Fixed by inlining the
+//      call directly as an argument.
 // ============================================================
 
 import SwiftUI
@@ -25,12 +30,27 @@ import SwiftData
 
 struct BudgetDetailView: View {
 
+    // FIX 1: @Bindable is required whenever you use $budget.property
+    // or pass budget to a child that declares @Bindable.
+    // Without it the compiler produces "Referencing subscript
+    // 'subscript(dynamicMember:)' requires wrapper 'Bindable<Budget>'".
     @Bindable var budget: Budget
+
+    @Environment(\.modelContext) private var modelContext
 
     // ── Sheet triggers ───────────────────────────────────────────────────────
     @State private var showingAddExpense  = false
-    /// Set to a non-nil Expense to open EditExpenseView for that expense.
-    @State private var selectedExpense: Expense?
+
+    // FIX 2a: Keep the selected expense as plain @State (not a Binding
+    // passed to sheet(item:)).
+    @State private var selectedExpense:   Expense?
+
+    // FIX 2b: Drive the edit sheet with a separate Bool so we use
+    // .sheet(isPresented:) instead of .sheet(item:).
+    // This avoids the "Property 'id' requires class type" compiler error
+    // that appears when SwiftUI can't resolve Expense: Identifiable
+    // through the Binding<Expense?> overload.
+    @State private var showingEditExpense = false
 
     // MARK: - Body
 
@@ -58,24 +78,49 @@ struct BudgetDetailView: View {
                 }
             }
         }
+
         // ── Add expense sheet ────────────────────────────────────────────────
+        // FIX 3: CycleManager.getOrCreateCurrentCycle returns a non-optional
+        // BudgetCycle, so 'if let' won't compile and explicit 'return' is
+        // not allowed in ViewBuilder. Pass the result directly as an argument.
         .sheet(isPresented: $showingAddExpense) {
-            AddExpenseView(budget: budget)
+            AddExpenseView(
+                cycle: CycleManager.getOrCreateCurrentCycle(
+                    for: budget,
+                    context: modelContext
+                )
+            )
         }
+
         // ── Edit expense sheet ───────────────────────────────────────────────
-        // .sheet(item:) automatically presents when selectedExpense becomes
-        // non-nil and dismisses (and nils it out) when the sheet is closed.
-        // Expense is Identifiable via SwiftData's @Model, so this just works.
-        .sheet(item: $selectedExpense) { expense in
-            EditExpenseView(expense: expense)
+        // FIX 2c: .sheet(isPresented:) + unwrapping selectedExpense inside
+        // the closure. This is equivalent to .sheet(item:) but avoids the
+        // Identifiable/Binding compiler bug.
+        //
+        // When the sheet dismisses, SwiftUI sets showingEditExpense = false.
+        // We then nil out selectedExpense in the .onChange below so the
+        // reference doesn't linger.
+        .sheet(isPresented: $showingEditExpense) {
+            // selectedExpense is guaranteed non-nil here because we set it
+            // to a real expense before setting showingEditExpense = true.
+            if let expense = selectedExpense {
+                EditExpenseView(expense: expense)
+            }
+        }
+        // Clean up selectedExpense after the sheet closes.
+        .onChange(of: showingEditExpense) { _, isShowing in
+            if !isShowing { selectedExpense = nil }
         }
     }
 
     // MARK: - Hero Section
 
     private var heroSection: some View {
-        VStack(spacing: 6) {
-            Text(budget.isOverBudget ? "Over Budget" : "Remaining \(budget.periodLabel)")
+        // Use the current cycle for all spending numbers.
+        let cycle = budget.currentCycle
+
+        return VStack(spacing: 6) {
+            Text(budget.isCurrentlyOverBudget ? "Over Budget" : "Remaining \(budget.periodLabel)")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.secondary)
 
@@ -83,31 +128,35 @@ struct BudgetDetailView: View {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text("$")
                     .font(.system(size: 38, weight: .light, design: .rounded))
-                    .foregroundStyle(budget.isOverBudget ? .red : .primary)
+                    .foregroundStyle(budget.isCurrentlyOverBudget ? .red : .primary)
 
-                Text(balanceParts.integer)
+                Text(balanceParts(for: cycle).integer)
                     .font(.system(size: 76, weight: .thin, design: .rounded))
-                    .foregroundStyle(budget.isOverBudget ? .red : .primary)
+                    .foregroundStyle(budget.isCurrentlyOverBudget ? .red : .primary)
 
-                Text(".\(balanceParts.decimal)")
+                Text(".\(balanceParts(for: cycle).decimal)")
                     .font(.system(size: 38, weight: .light, design: .rounded))
-                    .foregroundStyle(budget.isOverBudget ? .red : .primary)
+                    .foregroundStyle(budget.isCurrentlyOverBudget ? .red : .primary)
                     .baselineOffset(4)
             }
 
             HStack(spacing: 24) {
-                miniStat(label: "Budget", value: budget.totalAmount, color: .secondary)
-                miniStat(label: "Spent",  value: budget.totalSpent,  color: .orange)
+                miniStat(label: "Budget",
+                         value: cycle?.totalAmount ?? budget.totalAmount,
+                         color: .secondary)
+                miniStat(label: "Spent",
+                         value: cycle?.totalSpent ?? 0,
+                         color: .orange)
             }
             .padding(.top, 4)
 
-            ProgressView(value: budget.progress)
-                .tint(budget.isOverBudget ? .red : .accentColor)
+            ProgressView(value: cycle?.progress ?? 0)
+                .tint(budget.isCurrentlyOverBudget ? .red : .accentColor)
                 .padding(.horizontal, 40)
                 .padding(.top, 10)
 
-            if budget.isOverBudget {
-                Text("Over by \(abs(budget.remaining), format: .currency(code: "USD"))")
+            if budget.isCurrentlyOverBudget, let cycle {
+                Text("Over by \(abs(cycle.remainingAmount), format: .currency(code: "USD"))")
                     .font(.caption.bold())
                     .foregroundStyle(.red)
                     .padding(.top, 2)
@@ -119,8 +168,10 @@ struct BudgetDetailView: View {
         .background(Color(.systemBackground))
     }
 
-    private var balanceParts: (integer: String, decimal: String) {
-        let value     = abs(budget.remaining)
+    // MARK: - Balance String Parts
+
+    private func balanceParts(for cycle: BudgetCycle?) -> (integer: String, decimal: String) {
+        let value     = abs(cycle?.remainingAmount ?? budget.totalAmount)
         let formatted = String(format: "%.2f", value)
         let parts     = formatted.split(separator: ".")
         return (String(parts[0]), parts.count > 1 ? String(parts[1]) : "00")
@@ -140,41 +191,39 @@ struct BudgetDetailView: View {
     // MARK: - Expense Section
 
     private var expenseSection: some View {
-        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-            if budget.expenses.isEmpty {
+        // Pull expenses from the active cycle, not the budget directly.
+        let expenses = budget.currentCycle?.expenses ?? []
+
+        return LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+            if expenses.isEmpty {
                 emptyState
             } else {
-                ForEach(groupedExpenses, id: \.label) { group in
+                ForEach(groupedExpenses(from: expenses), id: \.label) { group in
                     Section {
                         ForEach(Array(group.expenses.enumerated()),
                                 id: \.element.id) { index, expense in
 
-                            // ── Tappable expense row ─────────────────────────
-                            // The entire row is a Button so the user can tap
-                            // anywhere on it to open the expense editor.
-                            // .plain style preserves the custom ExpenseRowView
-                            // appearance — no default button highlighting.
                             Button {
-                                selectedExpense = expense
+                                // FIX 2d: Set the target, THEN flip the Bool.
+                                // The Bool change triggers .sheet(isPresented:).
+                                // Reversing the order could show an empty sheet
+                                // if SwiftUI reacts before selectedExpense is set.
+                                selectedExpense   = expense
+                                showingEditExpense = true
                             } label: {
                                 HStack(spacing: 0) {
                                     ExpenseRowView(expense: expense)
 
-                                    // Chevron — a standard iOS affordance that
-                                    // signals "tap me to see more / edit".
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 12, weight: .semibold))
                                         .foregroundStyle(Color(.tertiaryLabel))
                                         .padding(.trailing, 20)
                                 }
                                 .background(Color(.systemBackground))
-                                // contentShape makes the entire row (including
-                                // whitespace) respond to taps, not just the text.
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
 
-                            // Divider indented to align under text, not icon
                             if index < group.expenses.count - 1 {
                                 Divider()
                                     .padding(.leading, 76)
@@ -238,8 +287,8 @@ struct BudgetDetailView: View {
         var total:    Double { expenses.reduce(0) { $0 + $1.amount } }
     }
 
-    private var groupedExpenses: [ExpenseGroup] {
-        let sorted   = budget.expenses.sorted { $0.date > $1.date }
+    private func groupedExpenses(from expenses: [Expense]) -> [ExpenseGroup] {
+        let sorted   = expenses.sorted { $0.date > $1.date }
         let calendar = Calendar.current
         var groupMap: [String: [Expense]] = [:]
         var order:    [String] = []
@@ -251,9 +300,9 @@ struct BudgetDetailView: View {
             } else if calendar.isDateInYesterday(expense.date) {
                 key = "Yesterday"
             } else {
-                let df = DateFormatter()
+                let df        = DateFormatter()
                 df.dateFormat = "MMMM d"
-                key = df.string(from: expense.date)
+                key           = df.string(from: expense.date)
             }
 
             if groupMap[key] == nil {
@@ -270,10 +319,20 @@ struct BudgetDetailView: View {
 
     private func deleteExpenses(at offsets: IndexSet, from expenses: [Expense]) {
         for index in offsets {
-            if let i = budget.expenses.firstIndex(where: { $0.id == expenses[index].id }) {
-                budget.expenses.remove(at: i)
+            if let expense = expenses[safe: index] {
+                // Remove from the cycle's expense list
+                budget.currentCycle?.expenses.removeAll { $0.id == expense.id }
             }
         }
+    }
+}
+
+// MARK: - Safe Subscript Helper
+
+// Prevents index-out-of-range crashes in deleteExpenses.
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 
@@ -281,27 +340,29 @@ struct BudgetDetailView: View {
 
 #Preview {
     do {
-        let schema = Schema([Budget.self, Expense.self])
+        let schema = Schema([Budget.self, BudgetCycle.self, Expense.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: config)
         let ctx = container.mainContext
 
-        let budget = Budget(name: "Groceries", totalAmount: 500, period: "monthly")
+        let budget = Budget(name: "Groceries", totalAmount: 500, cycleType: .monthly)
         ctx.insert(budget)
 
+        let cycle = CycleManager.getOrCreateCurrentCycle(for: budget, context: ctx)
+
         let samples: [(Double, String, Int)] = [
-            (24.99, "Whole Foods run", 0),
-            (4.75,  "Coffee",          0),
-            (3.35,  "Pet treats",      0),
+            (24.99, "Whole Foods run",      0),
+            (4.75,  "Coffee",               0),
+            (3.35,  "Pet treats",           0),
             (39.75, "Jeff's birthday gift", -1),
-            (12.50, "Lunch",           -1),
-            (89.00, "Weekly shop",     -3),
+            (12.50, "Lunch",               -1),
+            (89.00, "Weekly shop",         -3),
         ]
         for (amount, note, daysAgo) in samples {
             let date = Calendar.current.date(byAdding: .day, value: daysAgo, to: .now)!
             let e = Expense(amount: amount, note: note, date: date)
-            e.budget = budget
-            budget.expenses.append(e)
+            e.budgetCycle = cycle
+            cycle.expenses.append(e)
             ctx.insert(e)
         }
 

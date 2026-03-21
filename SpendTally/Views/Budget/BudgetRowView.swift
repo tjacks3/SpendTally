@@ -1,44 +1,53 @@
 import SwiftUI
 
 struct BudgetRowView: View {
-    
+
     let budget: Budget
-    
+
     var body: some View {
+        // Use the current cycle for all display values
+        let cycle = budget.currentCycle
+
         VStack(alignment: .leading, spacing: 8) {
-            
+
             HStack {
-                Text(budget.name)
-                    .font(.headline)
+                Text(budget.name).font(.headline)
                 Spacer()
-                Text(budget.remaining, format: .currency(code: "USD"))
+                Text(cycle?.remainingAmount ?? budget.totalAmount,
+                     format: .currency(code: "USD"))
                     .font(.headline)
-                    .foregroundStyle(budget.isOverBudget ? .red : .green)
+                    .foregroundStyle((cycle?.isOver ?? false) ? .red : .green)
             }
-            
-            // Progress bar
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color.secondary.opacity(0.2))
                         .frame(height: 8)
-                    
+
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(budget.isOverBudget ? Color.red : Color.accentColor)
-                        .frame(width: geo.size.width * budget.progress, height: 8)
-                        .animation(.easeOut, value: budget.progress)
+                        .fill((cycle?.isOver ?? false) ? Color.red : Color.accentColor)
+                        .frame(width: geo.size.width * (cycle?.progress ?? 0), height: 8)
+                        .animation(.easeOut, value: cycle?.progress)
                 }
             }
             .frame(height: 8)
-            
+
             HStack {
-                Text("\(budget.periodLabel)")
+                // Show cycle type label
+                Label(budget.periodLabel, systemImage: budget.cycleType.icon)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(budget.totalSpent, format: .currency(code: "USD")) of \(budget.totalAmount, format: .currency(code: "USD"))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let cycle {
+                    Text("\(cycle.totalSpent, format: .currency(code: "USD")) of \(cycle.totalAmount, format: .currency(code: "USD"))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No activity yet")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(.vertical, 4)

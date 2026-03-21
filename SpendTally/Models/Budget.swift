@@ -1,63 +1,86 @@
 import SwiftData
 import Foundation
 
-/// A budget the user creates. It tracks a total amount and a time period.
-/// The @Model macro turns this Swift class into a persistent database record.
+/// A Budget defines the *rules* for spending — the name, amount, and
+/// how often it resets. It does NOT track spending directly.
+///
+/// Think of Budget as a template: "I want to spend $500 each month
+/// on groceries." The actual spending lives inside BudgetCycle records.
 @Model
 final class Budget {
-    
+
     // MARK: - Stored Properties
-    // Every property here gets saved to disk automatically.
-    
-    var name: String           // e.g. "Groceries"
-    var totalAmount: Double    // e.g. 500.00
-    var period: String         // "daily", "weekly", or "monthly"
-    var startDate: Date
-    
-    // @Relationship tells SwiftData that one Budget has many Expenses.
-    // cascade means: when you delete a budget, all its expenses are deleted too.
-    @Relationship(deleteRule: .cascade)
-    var expenses: [Expense] = []
-    
+
+    var name: String            // "Groceries"
+    var totalAmount: Double     // 500.00
+    var cycleType: CycleType    // .monthly
+    var cycleLengthInDays: Int  // used for .weekly and .custom
+    var startDate: Date         // when the first cycle begins
+    var isRecurring: Bool       // if false, only one cycle is ever created
+    var isPaused: Bool          // no new cycles created while paused
+    var createdAt: Date
+
+    // MARK: - Relationship
+
+    /// All cycles that belong to this budget.
+    /// cascade: deleting the budget deletes all its cycles (and their expenses).
+    /// inverse: tells SwiftData that BudgetCycle.budget is the other side.
+    @Relationship(deleteRule: .cascade, inverse: \BudgetCycle.budget)
+    var cycles: [BudgetCycle] = []
+
     // MARK: - Initializer
-    
-    init(name: String, totalAmount: Double, period: String, startDate: Date = .now) {
+
+    init(
+        name: String,
+        totalAmount: Double,
+        cycleType: CycleType = .monthly,
+        cycleLengthInDays: Int? = nil,
+        startDate: Date = .now,
+        isRecurring: Bool = true
+    ) {
         self.name = name
         self.totalAmount = totalAmount
-        self.period = period
+        self.cycleType = cycleType
+        // If not provided, use the cycle type's default
+        self.cycleLengthInDays = cycleLengthInDays ?? cycleType.defaultLengthInDays
         self.startDate = startDate
+        self.isRecurring = isRecurring
+        self.isPaused = false
+        self.createdAt = .now
     }
-    
-    // MARK: - Computed Properties
-    // These are NOT stored in the database — they're calculated on the fly.
-    
-    /// Sum of all expense amounts
-    var totalSpent: Double {
-        expenses.reduce(0) { $0 + $1.amount }
+
+    // MARK: - Computed Helpers
+
+    /// The cycle that contains today's date, if one exists.
+    /// Views should call CycleManager.getOrCreateCurrentCycle() to
+    /// also create it if it doesn't exist yet.
+    var currentCycle: BudgetCycle? {
+        let now = Date.now
+        return cycles.first { $0.startDate <= now && now <= $0.endDate }
     }
-    
-    /// How much money is left
-    var remaining: Double {
-        totalAmount - totalSpent
+
+    /// All cycles sorted newest-first (for history lists).
+    var sortedCycles: [BudgetCycle] {
+        cycles.sorted { $0.startDate > $1.startDate }
     }
-    
-    /// Progress from 0.0 (nothing spent) to 1.0 (all spent)
-    var progress: Double {
-        guard totalAmount > 0 else { return 0 }
-        return min(totalSpent / totalAmount, 1.0)
+
+    /// Convenience: how much is left in the active cycle.
+    var currentRemaining: Double {
+        currentCycle?.remainingAmount ?? totalAmount
     }
-    
-    /// Returns true if the user has gone over budget
-    var isOverBudget: Bool {
-        remaining < 0
+
+    /// Convenience: is the current cycle over budget?
+    var isCurrentlyOverBudget: Bool {
+        currentCycle?.isOver ?? false
     }
-    
-    /// A human-readable label for the period
+
+    /// A human-readable label for the cycle period
     var periodLabel: String {
-        switch period {
-        case "daily":   return "Today"
-        case "weekly":  return "This Week"
-        default:        return "This Month"
+        switch cycleType {
+        case .daily:   return "Today"
+        case .weekly:  return "This Week"
+        case .monthly: return "This Month"
+        case .custom:  return "This Period"
         }
     }
 }

@@ -79,17 +79,18 @@ final class ExpenseViewModel {
     // MARK: - Actions
     
     /// Saves the expense to the budget and clears the form.
-    func addExpense(to budget: Budget, context: ModelContext) {
+    func addExpense(to cycle: BudgetCycle, context: ModelContext) {
         guard isFormValid, let amountDouble = Double(amount) else { return }
-        
+
         let expense = Expense(amount: amountDouble, note: note, date: date)
-        
+
         if let image = receiptImage {
             expense.receiptImageData = image.jpegData(compressionQuality: 0.6)
         }
-        
-        expense.budget = budget
-        budget.expenses.append(expense)
+
+        // Attach to the cycle, not the budget
+        expense.budgetCycle = cycle
+        cycle.expenses.append(expense)
         context.insert(expense)
         reset()
     }
