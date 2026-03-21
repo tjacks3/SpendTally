@@ -311,7 +311,26 @@ final class BudgetViewModel {
             context.delete(budgets[index])
         }
     }
+    
+    /// Ensures every budget has an active cycle for today.
+    ///
+    /// Called on app foreground and when BudgetListView first appears.
+    /// Safe to call multiple times — CycleEngine's fast path returns
+    /// immediately if an active cycle already exists, so there is zero
+    /// risk of creating duplicates.
+    func refreshAllCycles(budgets: [Budget], context: ModelContext) {
+        for budget in budgets {
+            // Skip paused budgets — they should not advance automatically.
+            guard !budget.isPaused else { continue }
 
+            // CycleEngine handles the rest:
+            //   • If a valid cycle for today exists → returns immediately (no writes)
+            //   • If cycles are missing → backfills them, then returns the current one
+            CycleEngine.ensureActiveCycleExists(for: budget, context: context)
+        }
+    }
+    
+    
     // MARK: - Private Helpers
 
     /// Builds a temporary Budget used only for preview calculations.
