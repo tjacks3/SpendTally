@@ -348,7 +348,7 @@ private extension Collection {
         let budget = Budget(name: "Groceries", totalAmount: 500, cycleType: .monthly)
         ctx.insert(budget)
 
-        let cycle = CycleManager.getOrCreateCurrentCycle(for: budget, context: ctx)
+        let cycle = CycleEngine.ensureActiveCycleExists(for: budget, context: ctx)
 
         let samples: [(Double, String, Int)] = [
             (24.99, "Whole Foods run",      0),

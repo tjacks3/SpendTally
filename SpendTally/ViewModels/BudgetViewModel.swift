@@ -41,7 +41,7 @@ final class BudgetViewModel {
         context.insert(budget)
 
         // Create the first cycle immediately so the UI has something to show
-        CycleManager.getOrCreateCurrentCycle(for: budget, context: context)
+        CycleEngine.ensureActiveCycleExists(for: budget, context: context)
 
         resetForm()
     }
