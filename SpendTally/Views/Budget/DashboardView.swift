@@ -281,8 +281,57 @@ struct DashboardView: View {
                 )
             )
         }
+        // ADD inside DashboardView body, at the bottom of the VStack(spacing: 20) block,
+        // after the existing resetFooter card:
+
+        // ── Transactions row ──────────────────────────────────────────────────────────
+        // NavigationLink works here because DashboardView is already inside the
+        // NavigationStack created by ContentView. No sheet needed.
+        NavigationLink {
+            BudgetDetailView(budget: budget, showHero: false)
+        } label: {
+            HStack {
+                Label("Transactions", systemImage: "list.bullet.rectangle")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if let count = cycle?.transactionCount, count > 0 {
+                    Text("\(count)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+
+        // ── History row ───────────────────────────────────────────────────────────────
+        NavigationLink {
+            BudgetHistoryView(budget: budget)
+        } label: {
+            HStack {
+                Label("History", systemImage: "calendar.badge.clock")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 
+    
+    
     // MARK: - Cycle Header Card
 
     /// Shows the budget's cycle window and the "resets in X days" hint.

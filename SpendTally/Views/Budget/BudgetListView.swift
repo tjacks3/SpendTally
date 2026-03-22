@@ -34,7 +34,7 @@ struct BudgetListView: View {
             }
         }
         .navigationDestination(for: Budget.self) { budget in
-            BudgetDetailView(budget: budget)
+            DashboardView(budget: budget)      // ← correct
         }
         .sheet(isPresented: $showingCreateSheet) {
             CreateBudgetView()

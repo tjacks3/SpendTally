@@ -34,6 +34,9 @@ import SwiftData
 struct BudgetDetailView: View {
 
     @Bindable var budget: Budget
+    /// When true (default), shows the balance/stats hero at the top.
+    /// Set to false when presenting from DashboardView to avoid repeating the cycle summary.
+    var showHero: Bool = true
 
     @Environment(\.modelContext) private var modelContext
 
@@ -49,7 +52,7 @@ struct BudgetDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                heroSection
+                if showHero { heroSection }
                 expenseSection
             }
         }

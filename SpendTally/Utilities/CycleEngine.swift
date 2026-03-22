@@ -158,9 +158,11 @@ struct CycleEngine {
         // Fill any cycles that should have been created while the app was closed.
         handleMissedCycles(for: budget, context: context)
 
-        // Gap-filling may have already created today's cycle. Check again.
-        if let active = getCurrentCycle(for: budget) {
-            return active
+        // If this budget is non-recurring and already has a cycle (now expired),
+        // return that expired cycle rather than creating a new one.
+        // The UI should show the completed state, not a fresh empty cycle.
+        if !budget.isRecurring, let latestCycle = budget.sortedCycles.first {
+            return latestCycle
         }
 
         // No previous cycles at all — create the very first one.
