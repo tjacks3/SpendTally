@@ -13,10 +13,17 @@
 //   • "Repeat automatically?" toggle replaces the old single-
 //     checkbox; sub-text explains the consequence clearly.
 //
-//   • A live Preview section appears once the form is valid.
-//     It shows the first cycle's start date, the next reset
-//     date, the cycle length in days, and the repeat setting —
-//     all derived from CycleManager so the numbers are exact.
+//   • The toolbar "Save" button is now labelled "Continue".
+//     Tapping it opens a Preview modal sheet for the user to
+//     review the budget before committing. The modal contains
+//     the Save button that triggers the actual save logic.
+//
+//   • BudgetPreviewModal (private struct, bottom of file):
+//       – Displays the budget summary (same data as the old
+//         inline preview section).
+//       – "Save" button commits the budget and dismisses all.
+//       – "Go Back" (leading toolbar) dismisses only the modal,
+//         returning the user to the form to make adjustments.
 //
 //   • Private sub-views:
 //       CycleTypeCard   — unchanged card design
@@ -36,6 +43,15 @@ struct CreateBudgetView: View {
 
     @State private var vm = BudgetViewModel()
 
+    // Controls the preview modal shown after tapping "Continue".
+    @State private var showingPreviewModal = false
+
+    // Set to true by the modal's Save action. Read in onDismiss so that
+    // CreateBudgetView only dismisses AFTER the modal has fully closed —
+    // preventing a crash from tearing down the parent while the child sheet
+    // is still on screen.
+    @State private var didSave = false
+
     // MARK: - Body
 
     var body: some View {
@@ -52,9 +68,6 @@ struct CreateBudgetView: View {
                 if vm.newBudgetCycleType == .custom  { customConfigSection }
 
                 recurrenceSection
-
-                // Preview only appears once the form has enough valid data.
-                if vm.isFormValid { previewSection }
             }
             .navigationTitle("New Budget")
             .navigationBarTitleDisplayMode(.inline)
@@ -69,11 +82,30 @@ struct CreateBudgetView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        vm.createBudget(context: modelContext)
-                        dismiss()
+                    Button("Continue") {
+                        showingPreviewModal = true
                     }
                     .disabled(!vm.isFormValid)
+                }
+            }
+            // ── Preview modal ────────────────────────────────────────────────
+            // Shown when the user taps "Continue". The user reviews the budget
+            // summary and either taps "Save" to commit or "Go Back" to adjust.
+            //
+            // SAVE FLOW (two-step dismiss to avoid a crash):
+            //   1. Modal's Save button calls onSave() → vm.createBudget runs,
+            //      didSave is set to true, then the MODAL dismisses itself.
+            //   2. onDismiss fires after the modal is fully gone. If didSave is
+            //      true, CreateBudgetView dismisses itself. This order ensures
+            //      the parent is never torn down while the child is still alive.
+            .sheet(isPresented: $showingPreviewModal, onDismiss: {
+                if didSave { dismiss() }
+            }) {
+                BudgetPreviewModal(vm: vm) {
+                    vm.createBudget(context: modelContext)
+                    didSave = true
+                    // BudgetPreviewModal dismisses itself after calling onSave();
+                    // onDismiss above then dismisses CreateBudgetView.
                 }
             }
         }
@@ -312,85 +344,111 @@ struct CreateBudgetView: View {
             Text("Recurrence")
         }
     }
+}
 
-    // MARK: - Preview Section
+// MARK: - Budget Preview Modal
 
-    /// A live summary card that appears once the form is valid.
-    /// All values come directly from CycleManager, so what the user
-    /// sees here is exactly what the app will create.
-    private var previewSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 14) {
+/// Full-screen modal sheet that shows the user a summary of the budget
+/// they're about to create. Presented after tapping "Continue".
+///
+/// "Save"    → calls onSave() which commits the budget and dismisses all.
+/// "Go Back" → dismisses only this modal, returning the user to the form.
+private struct BudgetPreviewModal: View {
 
-                // ── Header row ────────────────────────────────────────────
-                HStack(spacing: 10) {
-                    Image(systemName: "calendar.badge.checkmark")
-                        .font(.title3)
-                        .foregroundStyle(Color.accentColor)
+    let vm: BudgetViewModel
+    let onSave: () -> Void
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(vm.newBudgetName)
-                            .font(.subheadline.bold())
+    @Environment(\.dismiss) private var dismiss
 
-                        if let amount = Double(vm.newBudgetAmount) {
-                            Text(amount, format: .currency(code: "USD"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 32) {
 
-                    Spacer()
+                    // ── Narrative summary ────────────────────────────────────
+                    // No card/list background — text sits directly on the
+                    // grouped background so it reads like a large editorial
+                    // callout the user can scan at a glance.
+                    narrativeSummary
+                        .padding(.horizontal, 28)
+                        .padding(.top, 16)
 
-                    // Cycle type pill badge
-                    Text(vm.newBudgetCycleType.displayName)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.12))
-                        .foregroundStyle(Color.accentColor)
-                        .clipShape(Capsule())
+                    Text("Dates are calculated automatically — no manual tracking needed.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 32)
                 }
-
-                Divider()
-
-                // ── Detail rows ───────────────────────────────────────────
-                PreviewRow(
-                    icon:  "arrow.clockwise",
-                    label: "Frequency",
-                    value: vm.previewFrequencyLabel
-                )
-                PreviewRow(
-                    icon:  "calendar",
-                    label: "Cycle begins",
-                    value: mediumDate(vm.previewCycleStart)
-                )
-                PreviewRow(
-                    icon:  "clock.arrow.2.circlepath",
-                    label: "Next reset",
-                    value: mediumDate(vm.previewNextReset)
-                )
-                PreviewRow(
-                    icon:  "ruler",
-                    label: "Cycle length",
-                    value: "\(vm.previewExactCycleDays) day\(vm.previewExactCycleDays == 1 ? "" : "s")"
-                )
-                PreviewRow(
-                    icon:  "repeat",
-                    label: "Repeats",
-                    value: vm.isRecurring ? "Yes, automatically" : "One time only"
-                )
             }
-            .padding(.vertical, 4)
-
-        } header: {
-            Text("Preview")
-        } footer: {
-            Text("Dates are calculated automatically — no manual tracking needed.")
-                .font(.caption)
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Review Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Go Back") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        // onSave() commits the budget and sets didSave = true
+                        // on the parent. Then we dismiss the modal ourselves so
+                        // the parent's onDismiss can fire cleanly afterward.
+                        onSave()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Narrative Summary
+
+    /// Builds a scannable paragraph where the key figures are bolded so the
+    /// user can sweep their eyes across the text and catch every important
+    /// detail without reading word-for-word.
+    ///
+    /// Example output:
+    ///   "Groceries" is a monthly budget of $1,500.00. It starts Mar 1, 2026
+    ///   and resets Apr 1, 2026. This budget resets on the 1st of each month.
+    ///   The cycle is 31 days and automatically repeats.
+    private var narrativeSummary: some View {
+        let name       = vm.newBudgetName
+        let cycleLabel = vm.newBudgetCycleType.displayName.lowercased()
+        let amount     = Double(vm.newBudgetAmount).map {
+            $0.formatted(.currency(code: "USD"))
+        } ?? vm.newBudgetAmount
+        let start      = mediumDate(vm.previewCycleStart)
+        let reset      = mediumDate(vm.previewNextReset)
+        let frequency  = vm.previewFrequencyLabel
+        let days       = vm.previewExactCycleDays
+        let dayWord    = days == 1 ? "day" : "days"
+        let repeatText = vm.isRecurring ? "automatically repeats" : "runs for one cycle only"
+
+        // Build the paragraph using Text concatenation so bold segments are
+        // inline — no markdown parsing, no AttributedString complexity.
+        return (
+            Text("\"") +
+            Text(name).bold() +
+            Text("\" is a ") +
+            Text(cycleLabel).bold() +
+            Text(" budget of ") +
+            Text(amount).bold() +
+            Text(". It starts ") +
+            Text(start).bold() +
+            Text(" and resets ") +
+            Text(reset).bold() +
+            Text(". \(frequency). The cycle is ") +
+            Text("\(days) \(dayWord)").bold() +
+            Text(" and ") +
+            Text(repeatText).bold() +
+            Text(".")
+        )
+        .font(.title2)
+        .fixedSize(horizontal: false, vertical: true)
+    }
 
     private func mediumDate(_ date: Date) -> String {
         let df        = DateFormatter()
