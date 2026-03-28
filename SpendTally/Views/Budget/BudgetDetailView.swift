@@ -1,33 +1,3 @@
-// ============================================================
-// FILE:   BudgetDetailView.swift
-// LOCATION: SpendTally/Views/Budget/BudgetDetailView.swift
-//
-// ACTION: REPLACE EXISTING FILE — full replacement.
-//
-// WHAT CHANGED vs. the previous version:
-//
-//   ADDED — @State var showingEditBudget: Bool
-//     Drives the new EditBudgetView sheet.
-//
-//   CHANGED — .toolbar block
-//     • Existing "+" button is now disabled when budget.isPaused
-//       (no active cycle to attach an expense to while paused).
-//     • New "…" (ellipsis.circle) button added to open EditBudgetView.
-//
-//   ADDED — .sheet(isPresented: $showingEditBudget)
-//     Presents EditBudgetView for name / amount / pause edits.
-//
-//   ADDED — pausedBanner computed property
-//     Orange banner with inline "Resume" button, visible only when
-//     budget.isPaused == true.
-//
-//   CHANGED — heroSection
-//     Wrapped the existing VStack in an outer VStack(spacing: 0) so
-//     pausedBanner appears above the balance display as a pinned strip.
-//
-// EVERYTHING ELSE IS UNCHANGED.
-// ============================================================
-
 import SwiftUI
 import SwiftData
 
@@ -42,7 +12,7 @@ struct BudgetDetailView: View {
 
     // ── Sheet triggers ───────────────────────────────────────────────────────
     @State private var showingAddExpense  = false
-    @State private var showingEditBudget  = false   // NEW
+    // showingEditBudget REMOVED — moved to DashboardView
 
     @State private var selectedExpense:   Expense?
     @State private var showingEditExpense = false
@@ -76,16 +46,7 @@ struct BudgetDetailView: View {
                 }
                 .disabled(budget.isPaused)
             }
-
-            // ── Edit budget button ───────────────────────────────────────────
-            // Opens EditBudgetView for name / amount / pause edits.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingEditBudget = true
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
+            // ellipsis.circle ToolbarItem REMOVED — moved to DashboardView
         }
 
         // ── Add expense sheet ────────────────────────────────────────────────
@@ -108,21 +69,11 @@ struct BudgetDetailView: View {
             if !isShowing { selectedExpense = nil }
         }
 
-        // ── Edit budget sheet ────────────────────────────────────────────────
-        // NEW: name, amount (with mid-cycle scope alert), and pause toggle.
-        .sheet(isPresented: $showingEditBudget) {
-            EditBudgetView(budget: budget)
-        }
+        // Edit budget sheet REMOVED — moved to DashboardView
     }
 
     // MARK: - Paused Banner
 
-    /// An orange strip shown at the top of heroSection when the budget is paused.
-    ///
-    /// Making it visible at the very top of the content area (above the balance
-    /// figures) ensures the user notices the paused state before interacting.
-    /// The inline "Resume" button calls CycleEngine.setPaused — on the next
-    /// foreground transition, handleMissedCycles will backfill any missed cycles.
     @ViewBuilder
     private var pausedBanner: some View {
         if budget.isPaused {
@@ -150,8 +101,6 @@ struct BudgetDetailView: View {
         let cycle = budget.currentCycle
 
         return VStack(spacing: 0) {
-            // Paused banner sits above the balance display.
-            // Renders nothing when budget.isPaused == false.
             pausedBanner
 
             VStack(spacing: 6) {
@@ -159,7 +108,6 @@ struct BudgetDetailView: View {
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(.secondary)
 
-                // Large split number: $292.50 rendered as "$" + "292" + ".50"
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("$")
                         .font(.system(size: 38, weight: .light, design: .rounded))
