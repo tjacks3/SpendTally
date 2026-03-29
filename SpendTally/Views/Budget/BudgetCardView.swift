@@ -161,9 +161,16 @@ struct BudgetCardView: View {
     @ViewBuilder
     private var progressText: some View {
         if let cycle {
-            Text("\(cycle.totalSpent, format: .currency(code: "USD")) of \(cycle.totalAmount, format: .currency(code: "USD"))")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(Color(.label))
+            HStack(spacing: 4) {
+                if isOver {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.red)
+                }
+                Text("Spent \(cycle.totalSpent, format: .currency(code: "USD")) of \(cycle.totalAmount, format: .currency(code: "USD"))")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color(.label))
+            }
         } else {
             Text("No activity yet")
                 .font(.system(size: 12, weight: .regular))
