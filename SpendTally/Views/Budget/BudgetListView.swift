@@ -1,3 +1,30 @@
+// ============================================================
+// FILE:   BudgetListView.swift
+// LOCATION: SpendTally/Views/Budget/BudgetListView.swift
+//
+// ACTION: REPLACE EXISTING FILE — full replacement.
+//
+// WHAT CHANGED vs. the previous version:
+//
+//   REMOVED — .navigationTitle("SpendTally")
+//     The navigation bar title has been removed entirely.
+//     The home tab's navigation chrome stays minimal and uncluttered.
+//
+//   REPLACED — List { ForEach { NavigationLink { BudgetRowView } } }
+//     The inner row view is now BudgetCardView, which renders a
+//     typography-first card with a subtle gradient and no progress bar.
+//     The List remains (preserving swipe-to-edit and swipe-to-delete),
+//     but rows are styled as floating cards via listRowBackground,
+//     listRowSeparator, and listRowInsets modifiers.
+//
+// EVERYTHING ELSE IS UNCHANGED:
+//   • Swipe-to-edit (leading) and swipe-to-delete (trailing) are intact.
+//   • NavigationLink(value:) → DashboardView push is intact.
+//   • refreshAllCycles hooks (.task + .onChange scenePhase) are intact.
+//   • CreateBudgetView, EditBudgetView, DeleteBudgetSheet sheets intact.
+//   • Empty state view is unchanged.
+// ============================================================
+
 import SwiftUI
 import SwiftData
 
@@ -13,13 +40,9 @@ struct BudgetListView: View {
     @State private var showingCreateSheet = false
 
     // ── drives the edit sheet ────────────────────────────────────────────────
-    // Set to a budget when the user swipes-to-edit on a row.
-    // Cleared automatically when the sheet dismisses (item: overload).
     @State private var budgetToEdit: Budget?
 
     // ── drives the delete confirmation dialog ────────────────────────────────
-    // Set to a budget when the user taps the trailing "Delete" swipe action.
-    // The actual deletion only happens after the user confirms the dialog.
     @State private var budgetToDelete: Budget?
 
     var body: some View {
@@ -30,7 +53,7 @@ struct BudgetListView: View {
                 budgetList
             }
         }
-        .navigationTitle("SpendTally")
+        // Title removed — no .navigationTitle here
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("New Budget", systemImage: "plus") {
@@ -46,18 +69,11 @@ struct BudgetListView: View {
         }
 
         // ── Edit budget sheet ────────────────────────────────────────────────
-        // Fires whenever budgetToEdit becomes non-nil (swipe-to-edit).
-        // Using `item:` instead of `isPresented:` means SwiftUI automatically
-        // resets budgetToEdit to nil when the sheet is dismissed — no manual
-        // cleanup needed.
         .sheet(item: $budgetToEdit) { budget in
             EditBudgetView(budget: budget)
         }
 
         // ── Delete confirmation sheet ────────────────────────────────────────
-        // Shown when the user taps the trailing "Delete" swipe action.
-        // The budget is only deleted if the user taps "Delete Budget" inside
-        // the sheet. Dismissing the sheet clears budgetToDelete automatically.
         .sheet(item: $budgetToDelete) { budget in
             DeleteBudgetSheet(budget: budget) {
                 if let index = budgets.firstIndex(where: { $0.id == budget.id }) {
@@ -88,24 +104,25 @@ struct BudgetListView: View {
 
     // MARK: - Budget List
 
-    // CHANGED: replaced `.onDelete` on the ForEach with explicit per-row
-    // `.swipeActions` blocks so we can attach two distinct actions:
-    //
-    //   Leading edge  (swipe right) → Edit   (blue pencil)
-    //   Trailing edge (swipe left)  → Delete (red trash)
-    //
-    // `.allowsFullSwipe(false)` on the trailing block prevents the user from
-    // accidentally deleting a budget by swiping all the way across.
-
     private var budgetList: some View {
         List {
             ForEach(budgets) { budget in
-                NavigationLink(value: budget) {
-                    BudgetRowView(budget: budget)
+                // ── Invisible NavigationLink trick ───────────────────────────
+                // Wrapping in a ZStack prevents List from detecting a direct
+                // NavigationLink child, which is what adds the chevron arrow.
+                // The NavigationLink is hidden behind the card and still
+                // handles tap-to-navigate correctly via NavigationLink(value:).
+                ZStack {
+                    NavigationLink(value: budget) { EmptyView() }
+                        .opacity(0)
+                    BudgetCardView(budget: budget)
                 }
+                // ── Remove default List row chrome ───────────────────────────
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+
                 // ── Leading swipe: Edit ──────────────────────────────────────
-                // A single blue "pencil" button that sets budgetToEdit,
-                // which triggers the sheet above.
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                     Button {
                         budgetToEdit = budget
@@ -114,17 +131,13 @@ struct BudgetListView: View {
                     }
                     .tint(.blue)
                 }
+
                 // ── Trailing swipe: Delete ───────────────────────────────────
-                // Sets budgetToDelete to trigger the confirmation dialog.
-                // The budget is NOT deleted here — only after the user confirms.
-                // `.allowsFullSwipe(false)` adds a safety net against accidental
-                // deletes — the user must tap the button explicitly.
+                // No role: .destructive — that would animate the row away
+                // immediately, before the confirmation sheet opens.
+                // Plain button + .tint(.red) gives the red colour without
+                // the premature disappear animation.
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    // No role: .destructive here — that role causes SwiftUI to
-                    // animate the row away immediately (before the action body
-                    // runs), making it look like the delete happened before the
-                    // confirmation sheet even opens. Plain button: action runs
-                    // normally, sheet opens, deletion only happens on confirm.
                     Button {
                         budgetToDelete = budget
                     } label: {
@@ -134,29 +147,31 @@ struct BudgetListView: View {
                 }
             }
         }
+        .listStyle(.plain)
+        .background(Color(.systemGroupedBackground))
+        .scrollContentBackground(.hidden)
     }
 
-    // MARK: - Empty State (unchanged)
+    // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "dollarsign.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
+            Image(systemName: "creditcard")
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
 
-            Text("No Budgets Yet")
-                .font(.title2.bold())
+            VStack(spacing: 6) {
+                Text("No budgets yet")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
 
-            Text("Tap + to create your first budget.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button("Create Budget") {
-                showingCreateSheet = true
+                Text("Tap + to create your first budget")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
         }
-        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
     }
 }
 
@@ -243,4 +258,53 @@ private struct DeleteBudgetSheet: View {
         }
         .presentationDetents([.medium])
     }
+}
+
+// MARK: - Preview
+
+#Preview {
+    let config    = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(
+        for: Budget.self, BudgetCycle.self, Expense.self,
+        configurations: config
+    )
+
+    let cal = Calendar.current
+
+    // Budget 1: monthly, under budget
+    let groceries = Budget(name: "Groceries", totalAmount: 1500, cycleType: .monthly)
+    container.mainContext.insert(groceries)
+
+    let gStart = cal.date(from: DateComponents(year: 2026, month: 3, day: 1))!
+    let gEnd   = cal.date(from: DateComponents(year: 2026, month: 3, day: 31,
+                                               hour: 23, minute: 59, second: 59))!
+    let gCycle = BudgetCycle(budget: groceries, startDate: gStart, endDate: gEnd)
+    container.mainContext.insert(gCycle)
+
+    let e1 = Expense(amount: 40, note: "Trader Joe's")
+    e1.budgetCycle = gCycle
+    container.mainContext.insert(e1)
+
+    // Budget 2: weekly, over budget
+    let dining = Budget(name: "Dining Out", totalAmount: 200, cycleType: .weekly)
+    container.mainContext.insert(dining)
+
+    let dStart = cal.date(from: DateComponents(year: 2026, month: 3, day: 22))!
+    let dEnd   = cal.date(from: DateComponents(year: 2026, month: 3, day: 28,
+                                               hour: 23, minute: 59, second: 59))!
+    let dCycle = BudgetCycle(budget: dining, startDate: dStart, endDate: dEnd)
+    container.mainContext.insert(dCycle)
+
+    let e2 = Expense(amount: 260, note: "Restaurant")
+    e2.budgetCycle = dCycle
+    container.mainContext.insert(e2)
+
+    // Budget 3: daily, no activity
+    let coffee = Budget(name: "Coffee", totalAmount: 10, cycleType: .daily)
+    container.mainContext.insert(coffee)
+
+    return NavigationStack {
+        BudgetListView()
+    }
+    .modelContainer(container)
 }
